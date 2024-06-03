@@ -5,3 +5,11 @@ pub use header::Header;
 pub struct Message {
     pub header: Header,
 }
+
+impl Message {
+    pub fn response(query: Message) -> Self {
+        Self {
+            header: Header::response(query.header.id),
+        }
+    }
+}

@@ -1,5 +1,3 @@
-#![warn(clippy::pedantic)]
-
 mod message;
 mod parser;
 mod writer;
@@ -22,11 +20,11 @@ fn main() -> Result<()> {
         anyhow::ensure!(msg.header.qr == QueryMode::Query);
 
         let res = look_up(msg)?;
-        let buf = res.flush()?;
+        let buf = res.flush();
         udp_socket.send_to(&buf, source)?;
     }
 }
 
-fn look_up(_msg: Message) -> Result<Message> {
-    todo!()
+fn look_up(query: Message) -> Result<Message> {
+    Ok(Message::response(query))
 }

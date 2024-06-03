@@ -18,7 +18,7 @@ impl From<u8> for QueryMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct OpCode(pub u8); // 4 bits
 
 #[repr(u8)]
@@ -90,4 +90,33 @@ pub struct Header {
     pub an_count: u16,
     pub ar_count: u16,
     pub ns_count: u16,
+}
+
+impl Default for Header {
+    fn default() -> Self {
+        Self {
+            id: PacketId(0),
+            qr: QueryMode::Response,
+            op_code: OpCode::default(),
+            aa: Authoritative::Unowned,
+            tc: Truncation::Complete,
+            ra: Recursion::Disabled,
+            rd: Recursion::Disabled,
+            z: Reserved,
+            r_code: OpCode::default(),
+            qd_count: 0,
+            an_count: 0,
+            ar_count: 0,
+            ns_count: 0,
+        }
+    }
+}
+
+impl Header {
+    pub fn response(id: PacketId) -> Self {
+        Self {
+            id,
+            ..Default::default()
+        }
+    }
 }

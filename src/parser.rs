@@ -13,7 +13,7 @@ fn take_packet_id(i: &[u8]) -> ByteResult<PacketId> {
 }
 
 fn take_opcode(i: BitInput) -> BitResult<OpCode> {
-    map(bits::complete::take(1u8), |bits: u8| OpCode(bits)).parse(i)
+    map(bits::complete::take(4u8), |bits: u8| OpCode(bits)).parse(i)
 }
 
 fn take_enum<T: From<u8>>(i: BitInput) -> BitResult<T> {
@@ -49,8 +49,8 @@ fn parse_header(i: &[u8]) -> ByteResult<Header> {
         op_code: flags.1,
         aa: flags.2,
         tc: flags.3,
-        ra: flags.4,
-        rd: flags.5,
+        rd: flags.4,
+        ra: flags.5,
         z: flags.6,
         r_code: flags.7,
         qd_count,
@@ -70,7 +70,7 @@ fn parse_questions(i: &[u8], c: u16) -> ByteResult<Vec<Question>> {
 fn parse_message(i: &[u8]) -> ByteResult<Message> {
     let (i, header) = parse_header(i)?;
     let (i, questions) = parse_questions(i, header.qd_count)?;
-    let msg = Message::new(header, questions);
+    let msg = Message::new_query(header, questions);
     Ok((i, msg))
 }
 

@@ -21,6 +21,16 @@ impl From<u8> for QueryMode {
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct OpCode(pub u8); // 4 bits
 
+impl OpCode {
+    pub fn no_error() -> Self {
+        OpCode(0)
+    }
+
+    pub fn not_implemented() -> Self {
+        OpCode(4)
+    }
+}
+
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Authoritative {
@@ -82,8 +92,8 @@ pub struct Header {
     pub op_code: OpCode,
     pub aa: Authoritative,
     pub tc: Truncation,
-    pub ra: Recursion,
     pub rd: Recursion,
+    pub ra: Recursion,
     pub z: Reserved,
     pub r_code: OpCode,
     pub qd_count: u16,

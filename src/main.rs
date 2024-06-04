@@ -2,8 +2,8 @@ mod message;
 mod parser;
 mod writer;
 use anyhow::Result;
-use message::{Message, Question};
-use std::net::UdpSocket;
+use message::{Answer, Answers, Data, Message, Question, Questions};
+use std::net::{Ipv4Addr, UdpSocket};
 
 fn main() -> Result<()> {
     println!("Logs from your program will appear here!");
@@ -27,7 +27,16 @@ fn main() -> Result<()> {
 
 fn look_up(query: Message) -> Result<Message> {
     let mut msg = Message::new_response(query);
+
     let q = Question::new_aa("codecrafters.io");
-    msg.set_questions(vec![q]);
+    let qs = Questions::try_from(vec![q])?;
+    msg.set_questions(qs);
+
+    let ip = Ipv4Addr::new(8, 8, 8, 8);
+    let data = Data::Ipv4(ip);
+    let a = Answer::new_aa("codecrafters.io".into(), data);
+    let ans = Answers::try_from(vec![a])?;
+    msg.set_answers(ans);
+
     Ok(msg)
 }

@@ -1,15 +1,14 @@
 use crate::{
     message::{
         header::{Authoritative, QueryMode, Recursion, Truncation},
-        Header,
+        Header, Question, Questions,
     },
     Message,
 };
 use bytes::{BufMut, BytesMut};
 
 impl Header {
-    pub fn flush(&self, buf: BytesMut) -> BytesMut {
-        let mut buf = buf;
+    pub fn write(&self, buf: &mut BytesMut) {
         buf.put_u16(self.id.0);
 
         let mut flags = 0u8;
@@ -38,14 +37,34 @@ impl Header {
         buf.put_u16(self.an_count);
         buf.put_u16(self.ns_count);
         buf.put_u16(self.ar_count);
+    }
+}
 
-        buf
+impl Question {
+    pub fn write(&self, buf: &mut BytesMut) {
+        self.name.split('.').for_each(|l| {
+            buf.put_u8(l.len() as u8);
+            buf.put(l.as_bytes())
+        });
+        buf.put_u8(0);
+        buf.put_u16(self.record as u16);
+        buf.put_u16(self.class as u16);
+    }
+}
+
+impl Questions {
+    pub fn write(&self, buf: &mut BytesMut) {
+        for q in self.iter() {
+            q.write(buf)
+        }
     }
 }
 
 impl Message {
     pub fn flush(&self) -> BytesMut {
-        let buf = BytesMut::with_capacity(12);
-        self.header.flush(buf)
+        let mut buf = BytesMut::with_capacity(12);
+        self.header().write(&mut buf);
+        self.questions().write(&mut buf);
+        buf
     }
 }

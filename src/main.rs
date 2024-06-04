@@ -2,7 +2,7 @@ mod message;
 mod parser;
 mod writer;
 use anyhow::Result;
-use message::{header::QueryMode, Message};
+use message::{Message, Question};
 use std::net::UdpSocket;
 
 fn main() -> Result<()> {
@@ -17,7 +17,7 @@ fn main() -> Result<()> {
         anyhow::ensure!(size > 12, "Packet is not long enough: {size}");
 
         let msg = Message::try_from(buf.as_ref())?;
-        anyhow::ensure!(msg.header.qr == QueryMode::Query);
+        anyhow::ensure!(msg.is_query());
 
         let res = look_up(msg)?;
         let buf = res.flush();
@@ -26,5 +26,8 @@ fn main() -> Result<()> {
 }
 
 fn look_up(query: Message) -> Result<Message> {
-    Ok(Message::response(query))
+    let mut msg = Message::new_response(query);
+    let q = Question::new_aa("codecrafters.io");
+    msg.set_questions(vec![q]);
+    Ok(msg)
 }

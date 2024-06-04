@@ -1,6 +1,6 @@
 use crate::message::{
     header::{OpCode, PacketId, Reserved},
-    Header, Message,
+    Header, Message, Question,
 };
 use nom::{bits, combinator::map, number::complete::be_u16, sequence::tuple, IResult, Parser};
 
@@ -62,8 +62,16 @@ fn parse_header(i: &[u8]) -> ByteResult<Header> {
     ByteResult::Ok((i, header))
 }
 
+fn parse_questions(i: &[u8], c: u16) -> ByteResult<Vec<Question>> {
+    println!("TODO: parse_questions: {c}");
+    Ok((i, vec![]))
+}
+
 fn parse_message(i: &[u8]) -> ByteResult<Message> {
-    map(parse_header, |header| Message { header }).parse(i)
+    let (i, header) = parse_header(i)?;
+    let (i, questions) = parse_questions(i, header.qd_count)?;
+    let msg = Message::new(header, questions);
+    Ok((i, msg))
 }
 
 impl TryFrom<&[u8]> for Message {

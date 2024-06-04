@@ -10,9 +10,30 @@ pub enum Record {
     AA = 1,
 }
 
+impl TryFrom<u16> for Record {
+    type Error = anyhow::Error;
+    fn try_from(value: u16) -> Result<Self> {
+        match value {
+            x if x == Self::AA as u16 => Ok(Self::AA),
+            _ => Err(anyhow::anyhow!("Not a record: {value}")),
+        }
+    }
+}
+
+#[repr(u16)]
 #[derive(Clone, Copy, Debug)]
 pub enum Class {
     IN = 1,
+}
+
+impl TryFrom<u16> for Class {
+    type Error = anyhow::Error;
+    fn try_from(value: u16) -> Result<Self> {
+        match value {
+            x if x == Self::IN as u16 => Ok(Self::IN),
+            _ => Err(anyhow::anyhow!("Not a class: {value}")),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -20,16 +41,6 @@ pub struct Question {
     pub name: String,
     pub record: Record,
     pub class: Class,
-}
-
-impl Question {
-    pub fn new_aa(name: &str) -> Self {
-        Self {
-            name: name.to_string(),
-            record: Record::AA,
-            class: Class::IN,
-        }
-    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -54,7 +65,7 @@ impl TryFrom<Vec<Question>> for Questions {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Data {
     Ipv4(Ipv4Addr),
 }
@@ -152,7 +163,7 @@ impl Message {
         }
     }
 
-    pub fn new_response(query: Message) -> Self {
+    pub fn new_response(query: &Message) -> Self {
         let mut header = Header::response(query.header.id);
         header.op_code = query.header.op_code;
         header.rd = query.header.rd;

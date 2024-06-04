@@ -1,8 +1,15 @@
 use crate::message::{
     header::{OpCode, PacketId, Reserved},
-    Header, Message, Question,
+    Class, Header, Message, Question, Record,
 };
-use nom::{bits, combinator::map, number::complete::be_u16, sequence::tuple, IResult, Parser};
+use nom::{
+    bits,
+    bytes::complete::{take, take_till1},
+    combinator::{map, map_res},
+    number::{self, complete::be_u16},
+    sequence::tuple,
+    IResult, Parser,
+};
 
 type ByteResult<'a, T> = IResult<&'a [u8], T>;
 type BitInput<'a> = (&'a [u8], usize);
@@ -62,9 +69,47 @@ fn parse_header(i: &[u8]) -> ByteResult<Header> {
     ByteResult::Ok((i, header))
 }
 
+fn parse_string(i: &[u8]) -> ByteResult<String> {
+    let (i, mut buf) = take_till1(|b| b == 0).parse(i)?;
+    let (i, _) = take(1u8).parse(i)?;
+    let mut parts: Vec<String> = vec![];
+    while !buf.is_empty() {
+        let count;
+        let chunk;
+        (buf, count) = number::complete::u8(buf)?;
+        (buf, chunk) = map_res(take(count), std::str::from_utf8).parse(buf)?;
+        parts.push(chunk.to_string());
+    }
+    let s = parts.join(".");
+    Ok((i, s))
+}
+
+fn parse_record(i: &[u8]) -> ByteResult<Record> {
+    map_res(be_u16, Record::try_from).parse(i)
+}
+
+fn parse_class(i: &[u8]) -> ByteResult<Class> {
+    map_res(be_u16, Class::try_from).parse(i)
+}
+
+fn parse_question(i: &[u8]) -> ByteResult<Question> {
+    let (i, name) = parse_string(i)?;
+    let (i, record) = parse_record(i)?;
+    let (i, class) = parse_class(i)?;
+    let q = Question {
+        name,
+        record,
+        class,
+    };
+    Ok((i, q))
+}
+
 fn parse_questions(i: &[u8], c: u16) -> ByteResult<Vec<Question>> {
-    println!("TODO: parse_questions: {c}");
-    Ok((i, vec![]))
+    (0..c).try_fold((i, vec![]), |(i, mut v), _| {
+        let (i, q) = parse_question(i)?;
+        v.push(q);
+        Ok((i, v))
+    })
 }
 
 fn parse_message(i: &[u8]) -> ByteResult<Message> {

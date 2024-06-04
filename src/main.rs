@@ -2,7 +2,7 @@ mod message;
 mod parser;
 mod writer;
 use anyhow::Result;
-use message::{Answer, Answers, Data, Message, Question, Questions};
+use message::{Answer, Answers, Data, Message};
 use std::net::{Ipv4Addr, UdpSocket};
 
 fn main() -> Result<()> {
@@ -26,16 +26,19 @@ fn main() -> Result<()> {
 }
 
 fn look_up(query: Message) -> Result<Message> {
-    let mut msg = Message::new_response(query);
+    let mut msg = Message::new_response(&query);
 
-    let q = Question::new_aa("codecrafters.io");
-    let qs = Questions::try_from(vec![q])?;
+    let qs = query.questions().clone();
     msg.set_questions(qs);
 
     let ip = Ipv4Addr::new(8, 8, 8, 8);
     let data = Data::Ipv4(ip);
-    let a = Answer::new_aa("codecrafters.io".into(), data);
-    let ans = Answers::try_from(vec![a])?;
+    let ans: Vec<_> = query
+        .questions()
+        .iter()
+        .map(|q| Answer::new_aa(q.name.clone(), data))
+        .collect();
+    let ans = Answers::try_from(ans)?;
     msg.set_answers(ans);
 
     Ok(msg)

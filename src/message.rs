@@ -1,151 +1,12 @@
+pub mod answer;
+pub mod data;
+pub mod domain;
 pub mod header;
-use anyhow::Result;
+pub mod question;
+use answer::Answers;
 pub use header::Header;
 use header::{OpCode, QueryMode};
-use std::{net::Ipv4Addr, ops::Deref};
-
-#[repr(u16)]
-#[derive(Clone, Copy, Debug)]
-pub enum Record {
-    AA = 1,
-}
-
-impl TryFrom<u16> for Record {
-    type Error = anyhow::Error;
-    fn try_from(value: u16) -> Result<Self> {
-        match value {
-            x if x == Self::AA as u16 => Ok(Self::AA),
-            _ => Err(anyhow::anyhow!("Not a record: {value}")),
-        }
-    }
-}
-
-#[repr(u16)]
-#[derive(Clone, Copy, Debug)]
-pub enum Class {
-    IN = 1,
-}
-
-impl TryFrom<u16> for Class {
-    type Error = anyhow::Error;
-    fn try_from(value: u16) -> Result<Self> {
-        match value {
-            x if x == Self::IN as u16 => Ok(Self::IN),
-            _ => Err(anyhow::anyhow!("Not a class: {value}")),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Question {
-    pub name: String,
-    pub record: Record,
-    pub class: Class,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct Questions(Vec<Question>);
-
-impl Deref for Questions {
-    type Target = Vec<Question>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl TryFrom<Vec<Question>> for Questions {
-    type Error = anyhow::Error;
-    fn try_from(qs: Vec<Question>) -> Result<Self> {
-        anyhow::ensure!(
-            qs.len() <= std::u16::MAX as usize,
-            "Exceed supported number questions: {}",
-            qs.len()
-        );
-        Ok(Questions(qs))
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum Data {
-    Ipv4(Ipv4Addr),
-}
-
-impl Data {
-    fn len(&self) -> u16 {
-        match self {
-            Self::Ipv4(ip) => ip.octets().len() as u16,
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Answer {
-    name: String,
-    record: Record,
-    class: Class,
-    ttl: u32,
-    length: u16,
-    data: Data,
-}
-
-impl Answer {
-    pub fn new_aa(name: String, data: Data) -> Self {
-        Self {
-            name,
-            record: Record::AA,
-            class: Class::IN,
-            ttl: 60,
-            length: data.len(),
-            data,
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn record(&self) -> Record {
-        self.record
-    }
-
-    pub fn class(&self) -> Class {
-        self.class
-    }
-
-    pub fn ttl(&self) -> u32 {
-        self.ttl
-    }
-
-    pub fn len(&self) -> u16 {
-        self.length
-    }
-
-    pub fn data(&self) -> &Data {
-        &self.data
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct Answers(Vec<Answer>);
-
-impl Deref for Answers {
-    type Target = Vec<Answer>;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl TryFrom<Vec<Answer>> for Answers {
-    type Error = anyhow::Error;
-    fn try_from(qs: Vec<Answer>) -> Result<Self> {
-        anyhow::ensure!(
-            qs.len() <= std::u16::MAX as usize,
-            "Exceed supported number of Answers: {}",
-            qs.len()
-        );
-        Ok(Answers(qs))
-    }
-}
+use question::Questions;
 
 #[derive(Clone, Debug)]
 pub struct Message {
@@ -155,10 +16,13 @@ pub struct Message {
 }
 
 impl Message {
-    pub fn new_query(header: Header, questions: Vec<Question>) -> Self {
+    pub fn new(header: Header) -> Self {
+        let mut header = header;
+        header.qd_count = 0;
+        header.an_count = 0;
         Self {
             header,
-            questions: Questions(questions),
+            questions: Default::default(),
             answers: Default::default(),
         }
     }
@@ -172,9 +36,10 @@ impl Message {
         } else {
             OpCode::not_implemented()
         };
+        header.qd_count = query.header.qd_count;
         Self {
             header,
-            questions: Default::default(),
+            questions: query.questions.clone(),
             answers: Default::default(),
         }
     }
@@ -205,5 +70,65 @@ impl Message {
     pub fn set_answers(&mut self, ans: Answers) {
         self.header.an_count = ans.len() as u16;
         self.answers = ans;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::Ipv4Addr;
+
+    use super::*;
+    use answer::Answer;
+    use domain::Domain;
+    use header::PacketId;
+
+    #[test]
+    fn test_message_empty() {
+        let h = Header {
+            id: PacketId(42),
+            ..Default::default()
+        };
+
+        let msg = Message::new(h);
+
+        assert_eq!(msg.header.id, PacketId(42));
+        assert_eq!(msg.header.an_count, 0);
+        assert_eq!(msg.header.qd_count, 0);
+    }
+
+    #[test]
+    fn test_message_response() {
+        let h = Header {
+            id: PacketId(42),
+            ..Default::default()
+        };
+        let mut query = Message::new(h);
+        let q = Domain::new_aa("hernan.rs");
+        let qs = vec![q.clone()].try_into().unwrap();
+        query.set_questions(qs);
+
+        let msg = Message::new_response(&query);
+
+        assert_eq!(msg.header().id, query.header().id);
+        assert_eq!(msg.header().rd, query.header().rd);
+        assert_eq!(msg.header().qd_count, 1);
+        assert!(msg.questions().contains(&q));
+    }
+
+    #[test]
+    fn test_message_answers() {
+        let h = Header {
+            id: PacketId(6),
+            ..Default::default()
+        };
+        let d = Domain::new_aa("hernan.rs");
+        let a = Answer::new(d, data::Data::Ipv4(Ipv4Addr::new(0, 0, 0, 0)));
+        let ans = vec![a.clone()].try_into().unwrap();
+
+        let mut msg = Message::new(h);
+        msg.set_answers(ans);
+
+        assert_eq!(msg.header().an_count, 1);
+        assert!(msg.answers().contains(&a));
     }
 }

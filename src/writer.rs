@@ -1,7 +1,10 @@
 use crate::{
     message::{
+        answer::Answer,
+        data::Data,
+        domain::{Domain, Label},
         header::{Authoritative, QueryMode, Recursion, Truncation},
-        Answer, Data, Header, Question,
+        Header,
     },
     Message,
 };
@@ -61,9 +64,18 @@ impl Writer for Header {
     }
 }
 
-impl Writer for Question {
+impl Writer for Label {
     fn write(&self, buf: &mut BytesMut) {
-        self.name.as_str().write(buf);
+        match self {
+            Self::Ref(_) => todo!(),
+            Self::Domain(s) => s.as_str().write(buf),
+        }
+    }
+}
+
+impl Writer for Domain {
+    fn write(&self, buf: &mut BytesMut) {
+        self.name.write(buf);
         buf.put_u16(self.record as u16);
         buf.put_u16(self.class as u16);
     }
@@ -79,11 +91,9 @@ impl Writer for Data {
 
 impl Writer for Answer {
     fn write(&self, buf: &mut BytesMut) {
-        self.name().write(buf);
-        buf.put_u16(self.record() as u16);
-        buf.put_u16(self.class() as u16);
+        self.domain().write(buf);
         buf.put_u32(self.ttl());
-        buf.put_u16(self.len());
+        buf.put_u16(self.data().len());
         self.data().write(buf);
     }
 }
@@ -95,5 +105,66 @@ impl Message {
         self.questions().write(&mut buf);
         self.answers().write(&mut buf);
         buf
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::message::header::{OpCode, PacketId, Reserved};
+    use std::net::Ipv4Addr;
+
+    use super::*;
+
+    #[test]
+    fn test_write_domain() {
+        let d = Domain::new_aa("google.com");
+        let mut buf = BytesMut::new();
+        d.write(&mut buf);
+
+        let chunk: &[u8] = &[
+            0x6, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0, 0, 1, 0, 1,
+        ];
+        assert_eq!(buf.as_ref(), chunk);
+    }
+
+    #[test]
+    fn test_write_header() {
+        let h = Header {
+            id: PacketId(34346),
+            qr: QueryMode::Query,
+            op_code: OpCode::no_error(),
+            aa: Authoritative::Unowned,
+            tc: Truncation::Complete,
+            rd: Recursion::Enabled,
+            ra: Recursion::Disabled,
+            z: Reserved,
+            r_code: OpCode::no_error(),
+            qd_count: 1,
+            an_count: 0,
+            ar_count: 0,
+            ns_count: 0,
+        };
+
+        let mut buf = BytesMut::new();
+        h.write(&mut buf);
+
+        let chunk: &[u8] = &[0x86, 0x2a, 0x01, 00, 00, 1, 00, 00, 00, 00, 00, 00];
+        assert_eq!(buf.as_ref(), chunk);
+    }
+
+    #[test]
+    fn test_write_answer() {
+        let dn = Domain::new_aa("google.com");
+        let d = Data::Ipv4(Ipv4Addr::new(0, 0, 0, 0));
+        let a = Answer::new(dn, d);
+
+        let mut buf = BytesMut::new();
+        a.write(&mut buf);
+
+        let chunk: &[u8] = &[
+            0x6, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0, 0, 1, 0, 1, 0, 0,
+            0, 0x3c, 0, 4, 0, 0, 0, 0,
+        ];
+        assert_eq!(buf.as_ref(), chunk);
     }
 }

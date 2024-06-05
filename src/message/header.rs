@@ -1,7 +1,6 @@
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PacketId(pub u16);
 
-#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum QueryMode {
     Query = 0,
@@ -31,7 +30,6 @@ impl OpCode {
     }
 }
 
-#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Authoritative {
     Owned = 1,
@@ -48,7 +46,6 @@ impl From<u8> for Authoritative {
     }
 }
 
-#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Truncation {
     Complete = 0,
@@ -65,7 +62,6 @@ impl From<u8> for Truncation {
     }
 }
 
-#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Recursion {
     Disabled = 0,
@@ -128,5 +124,55 @@ impl Header {
             id,
             ..Default::default()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_response() {
+        let id = PacketId(42);
+        let h = Header::response(id);
+        assert_eq!(h.id, id);
+    }
+
+    #[test]
+    fn test_recursion_from() {
+        let e = Recursion::from(1u8);
+        let d = Recursion::from(0u8);
+        assert_eq!(e, Recursion::Enabled);
+        assert_eq!(d, Recursion::Disabled);
+    }
+
+    #[test]
+    fn test_truncation_from() {
+        let e = Truncation::from(1u8);
+        let d = Truncation::from(0u8);
+        assert_eq!(e, Truncation::Truncated);
+        assert_eq!(d, Truncation::Complete);
+    }
+
+    #[test]
+    fn test_authoritative_from() {
+        let e = Authoritative::from(1u8);
+        let d = Authoritative::from(0u8);
+        assert_eq!(e, Authoritative::Owned);
+        assert_eq!(d, Authoritative::Unowned);
+    }
+
+    #[test]
+    fn test_mode_from() {
+        let e = QueryMode::from(1u8);
+        let d = QueryMode::from(0u8);
+        assert_eq!(e, QueryMode::Response);
+        assert_eq!(d, QueryMode::Query);
+    }
+
+    #[test]
+    fn test_op_codes() {
+        assert_eq!(OpCode::no_error().0, 0);
+        assert_eq!(OpCode::not_implemented().0, 4);
     }
 }

@@ -2,7 +2,7 @@ use crate::{
     message::{
         answer::Answer,
         data::Data,
-        domain::{Domain, Label},
+        domain::Domain,
         header::{Authoritative, QueryMode, Recursion, Truncation},
         Header,
     },
@@ -64,18 +64,9 @@ impl Writer for Header {
     }
 }
 
-impl Writer for Label {
-    fn write(&self, buf: &mut BytesMut) {
-        match self {
-            Self::Ref(_) => todo!(),
-            Self::Domain(s) => s.as_str().write(buf),
-        }
-    }
-}
-
 impl Writer for Domain {
     fn write(&self, buf: &mut BytesMut) {
-        self.name.write(buf);
+        self.name.as_str().write(buf);
         buf.put_u16(self.record as u16);
         buf.put_u16(self.class as u16);
     }

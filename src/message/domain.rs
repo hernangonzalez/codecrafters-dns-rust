@@ -31,20 +31,8 @@ impl TryFrom<u16> for Class {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Label {
-    Ref(u16),
-    Domain(String),
-}
-
-impl From<&str> for Label {
-    fn from(value: &str) -> Self {
-        Label::Domain(value.to_string())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
 pub struct Domain {
-    pub name: Label,
+    pub name: String,
     pub record: Record,
     pub class: Class,
 }
@@ -53,7 +41,7 @@ pub struct Domain {
 impl Domain {
     pub fn new_aa(name: &str) -> Self {
         Self {
-            name: Label::Domain(name.to_string()),
+            name: name.to_string(),
             record: Record::AA,
             class: Class::IN,
         }

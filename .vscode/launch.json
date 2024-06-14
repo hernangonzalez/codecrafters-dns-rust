@@ -7,7 +7,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'dns-starter-rust'",
+            "name": "Debug local",
             "cargo": {
                 "args": [
                     "build",
@@ -20,6 +20,27 @@
                 }
             },
             "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug resolver",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=dns-starter-rust",
+                    "--package=dns-starter-rust",
+                ],
+                "filter": {
+                    "name": "dns-starter-rust",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--resolver",
+                "8.8.8.8:53"
+            ],
             "cwd": "${workspaceFolder}"
         },
         {

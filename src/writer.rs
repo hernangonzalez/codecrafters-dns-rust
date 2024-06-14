@@ -1,20 +1,20 @@
 use crate::{
     message::{
-        answer::Answer,
         data::Data,
         domain::Domain,
         header::{Authoritative, QueryMode, Recursion, Truncation},
+        route::Route,
         Header,
     },
     Message,
 };
-use bytes::{BufMut, BytesMut};
+use bytes::{BufMut, Bytes, BytesMut};
 
-trait Writer {
+trait Serialize {
     fn write(&self, buf: &mut BytesMut);
 }
 
-impl Writer for &str {
+impl Serialize for &str {
     fn write(&self, buf: &mut BytesMut) {
         self.split('.').for_each(|l| {
             buf.put_u8(l.len() as u8);
@@ -24,13 +24,13 @@ impl Writer for &str {
     }
 }
 
-impl<T: Writer> Writer for Vec<T> {
+impl<T: Serialize> Serialize for Vec<T> {
     fn write(&self, buf: &mut BytesMut) {
         self.iter().for_each(|i| i.write(buf))
     }
 }
 
-impl Writer for Header {
+impl Serialize for Header {
     fn write(&self, buf: &mut BytesMut) {
         buf.put_u16(self.id.0);
 
@@ -64,7 +64,7 @@ impl Writer for Header {
     }
 }
 
-impl Writer for Domain {
+impl Serialize for Domain {
     fn write(&self, buf: &mut BytesMut) {
         self.name.as_str().write(buf);
         buf.put_u16(self.record as u16);
@@ -72,7 +72,7 @@ impl Writer for Domain {
     }
 }
 
-impl Writer for Data {
+impl Serialize for Data {
     fn write(&self, buf: &mut BytesMut) {
         match self {
             Self::Ipv4(ip) => buf.put_slice(&ip.octets()),
@@ -80,7 +80,7 @@ impl Writer for Data {
     }
 }
 
-impl Writer for Answer {
+impl Serialize for Route {
     fn write(&self, buf: &mut BytesMut) {
         self.domain().write(buf);
         buf.put_u32(self.ttl());
@@ -90,12 +90,12 @@ impl Writer for Answer {
 }
 
 impl Message {
-    pub fn flush(&self) -> BytesMut {
+    pub fn flush(&self) -> Bytes {
         let mut buf = BytesMut::with_capacity(12);
         self.header().write(&mut buf);
         self.questions().write(&mut buf);
         self.answers().write(&mut buf);
-        buf
+        buf.freeze()
     }
 }
 
@@ -147,7 +147,7 @@ mod tests {
     fn test_write_answer() {
         let dn = Domain::new_aa("google.com");
         let d = Data::Ipv4(Ipv4Addr::new(0, 0, 0, 0));
-        let a = Answer::new(dn, d);
+        let a = Route::new(dn, 60, d);
 
         let mut buf = BytesMut::new();
         a.write(&mut buf);

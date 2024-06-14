@@ -81,6 +81,7 @@ impl From<u8> for Recursion {
 #[derive(Clone, Copy, Debug)]
 pub struct Reserved; // 3 bits
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub struct Header {
     pub id: PacketId,

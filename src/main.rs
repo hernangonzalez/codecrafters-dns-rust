@@ -1,35 +1,74 @@
 mod message;
 mod parser;
+mod socket;
 mod writer;
-use anyhow::Result;
-use message::{
-    answer::{Answer, Answers},
-    data::Data,
-    Message,
-};
-use std::net::{Ipv4Addr, UdpSocket};
+use anyhow::{Context, Result};
+use message::{data::Data, route::Route, Message};
+use socket::DnsSocket;
+use std::{env, net::Ipv4Addr};
 
-fn main() -> Result<()> {
-    println!("Logs from your program will appear here!");
-
-    let udp_socket = UdpSocket::bind("127.0.0.1:2053").expect("Failed to bind to address");
-    let mut buf = [0; 512];
-
-    loop {
-        let (size, source) = udp_socket.recv_from(&mut buf)?;
-        // let buf = buf.clone();
-        anyhow::ensure!(size > 12, "Packet is not long enough: {size}");
-
-        let msg = Message::try_from(buf.as_ref())?;
-        anyhow::ensure!(msg.is_query());
-
-        let res = look_up(msg)?;
-        let buf = res.flush();
-        udp_socket.send_to(&buf, source)?;
-    }
+#[derive(Debug)]
+struct Args {
+    resolver: Option<String>,
 }
 
-fn look_up(query: Message) -> Result<Message> {
+fn parse_args() -> Result<Args> {
+    let mut resolver = None;
+    let mut all = env::args().skip(1);
+    while let Some(arg) = all.next() {
+        match arg.as_str() {
+            "--resolver" => {
+                let ip = all.next().context("Missing resolver IPv4")?;
+                resolver = Some(ip)
+            }
+            u => println!("Unknown argument: {u}"),
+        }
+    }
+    Ok(Args { resolver })
+}
+
+fn main() -> Result<()> {
+    println!("Starting DNS...");
+
+    let args = parse_args()?;
+    let srv = DnsSocket::listen("127.0.0.1:2053")?;
+
+    while let Ok((q, addr)) = srv.read() {
+        let res: Message = if let Some(ref addr) = args.resolver {
+            resolve_from(addr, &q)?
+        } else {
+            look_up_local(q)?
+        };
+
+        srv.send_to(&res, addr)?;
+    }
+
+    Ok(())
+}
+
+fn resolve_from(addr: &str, msg: &Message) -> Result<Message> {
+    let client = DnsSocket::connect(addr)?;
+
+    let mut answers = vec![];
+    for q in msg.questions().iter() {
+        let mut query = Message::new(*msg.header());
+        let qs = vec![q.clone()];
+        query.set_questions(qs)?;
+
+        client.send(&query)?;
+
+        let msg = client.recv()?;
+
+        let mut ans: Vec<Route> = msg.answers().clone();
+        answers.append(&mut ans)
+    }
+
+    let mut msg = Message::new_response(msg);
+    msg.set_answers(answers)?;
+    Ok(msg)
+}
+
+fn look_up_local(query: Message) -> Result<Message> {
     let mut msg = Message::new_response(&query);
 
     let ip = Ipv4Addr::new(8, 8, 8, 8);
@@ -37,10 +76,10 @@ fn look_up(query: Message) -> Result<Message> {
     let ans: Vec<_> = query
         .questions()
         .iter()
-        .map(|d| Answer::new(d.clone(), data))
+        .cloned()
+        .map(|d| Route::new(d, 60, data))
         .collect();
-    let ans = Answers::try_from(ans)?;
-    msg.set_answers(ans);
+    msg.set_answers(ans)?;
 
     Ok(msg)
 }

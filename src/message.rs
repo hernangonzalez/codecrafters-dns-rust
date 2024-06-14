@@ -1,18 +1,18 @@
-pub mod answer;
 pub mod data;
 pub mod domain;
 pub mod header;
-pub mod question;
-use answer::Answers;
+pub mod route;
+use anyhow::Result;
+use domain::Domain;
 pub use header::Header;
 use header::{OpCode, QueryMode};
-use question::Questions;
+use route::Route;
 
 #[derive(Clone, Debug)]
 pub struct Message {
     header: Header,
-    questions: Questions,
-    answers: Answers,
+    questions: Vec<Domain>,
+    answers: Vec<Route>,
 }
 
 impl Message {
@@ -54,33 +54,46 @@ impl Message {
         self.header.qr == QueryMode::Query
     }
 
-    pub fn questions(&self) -> &Questions {
+    pub fn questions(&self) -> &Vec<Domain> {
         &self.questions
     }
 
-    pub fn set_questions(&mut self, qs: Questions) {
+    pub fn set_questions(&mut self, qs: Vec<Domain>) -> Result<()> {
+        anyhow::ensure!(
+            qs.len() <= u16::MAX as usize,
+            "Exceed supported number of domains: {}",
+            qs.len()
+        );
+
         self.header.qd_count = qs.len() as u16;
         self.questions = qs;
+        Ok(())
     }
 
-    pub fn answers(&self) -> &Answers {
+    pub fn answers(&self) -> &Vec<Route> {
         &self.answers
     }
 
-    pub fn set_answers(&mut self, ans: Answers) {
+    pub fn set_answers(&mut self, ans: Vec<Route>) -> Result<()> {
+        anyhow::ensure!(
+            ans.len() <= u16::MAX as usize,
+            "Exceed supported max number of routes: {}",
+            ans.len()
+        );
+
         self.header.an_count = ans.len() as u16;
         self.answers = ans;
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
-
     use super::*;
-    use answer::Answer;
     use domain::Domain;
     use header::PacketId;
+    use route::Route;
+    use std::net::Ipv4Addr;
 
     #[test]
     fn test_message_empty() {
@@ -104,8 +117,8 @@ mod tests {
         };
         let mut query = Message::new(h);
         let q = Domain::new_aa("hernan.rs");
-        let qs = vec![q.clone()].try_into().unwrap();
-        query.set_questions(qs);
+        let qs = vec![q.clone()];
+        query.set_questions(qs).unwrap();
 
         let msg = Message::new_response(&query);
 
@@ -122,11 +135,11 @@ mod tests {
             ..Default::default()
         };
         let d = Domain::new_aa("hernan.rs");
-        let a = Answer::new(d, data::Data::Ipv4(Ipv4Addr::new(0, 0, 0, 0)));
-        let ans = vec![a.clone()].try_into().unwrap();
+        let a = Route::new(d, 60, data::Data::Ipv4(Ipv4Addr::new(0, 0, 0, 0)));
+        let ans = vec![a.clone()];
 
         let mut msg = Message::new(h);
-        msg.set_answers(ans);
+        msg.set_answers(ans).unwrap();
 
         assert_eq!(msg.header().an_count, 1);
         assert!(msg.answers().contains(&a));

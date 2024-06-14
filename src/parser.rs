@@ -1,13 +1,17 @@
+use std::net::Ipv4Addr;
+
 use crate::message::{
+    data::Data,
     domain::{Class, Domain, Record},
     header::{OpCode, PacketId, Reserved},
+    route::Route,
     Header, Message,
 };
 use nom::{
     bits,
     bytes::complete::take,
     combinator::{map, map_res, peek},
-    number::complete::{be_u16, be_u8},
+    number::complete::{be_u16, be_u32, be_u8},
     sequence::tuple,
     IResult, Parser,
 };
@@ -73,7 +77,7 @@ fn parse_header(i: &[u8]) -> ByteResult<Header> {
     ByteResult::Ok((i, header))
 }
 
-// TODO: Cache parsed domain parts by index
+// TODO: Cache parsed domain parts
 fn collect_domain_name<'a>(i: &'a [u8], buf: &'a [u8]) -> ByteResult<'a, Vec<String>> {
     let mut v = vec![];
     let mut i = i;
@@ -139,13 +143,29 @@ fn parse_questions<'a>(i: &'a [u8], c: u16, buf: &'a [u8]) -> ByteResult<'a, Vec
     })
 }
 
+fn parse_answers<'a>(i: &'a [u8], c: u16, buf: &'a [u8]) -> ByteResult<'a, Vec<Route>> {
+    (0..c).try_fold((i, vec![]), |(i, mut v), _| {
+        let (i, domain) = parse_domain(i, buf)?;
+        let (i, ttl) = be_u32(i)?;
+        let (i, len) = be_u16(i)?;
+        let (i, ip) = take(len).parse(i)?;
+        let ip = Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
+        let data = Data::Ipv4(ip);
+        let route = Route::new(domain, ttl, data);
+        v.push(route);
+        Ok((i, v))
+    })
+}
+
 // TODO: Propagate Message error instead of panic.
 fn parse_message(buf: &[u8]) -> ByteResult<Message> {
     let (i, header) = parse_header(buf)?;
     let (i, questions) = parse_questions(i, header.qd_count, buf)?;
+    let (i, answers) = parse_answers(i, header.an_count, buf)?;
     let mut msg = Message::new(header);
-    let questions = questions.try_into().expect("Could not build questions");
-    msg.set_questions(questions);
+    msg.set_questions(questions)
+        .expect("Could not build questions");
+    msg.set_answers(answers).expect("Could not build answers");
     Ok((i, msg))
 }
 
@@ -200,14 +220,36 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_message() {
+    fn test_parse_compressed_questions() {
         let data = [
             21, 51, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 3, 97, 98, 99, 17, 108, 111, 110, 103, 97, 115,
             115, 100, 111, 109, 97, 105, 110, 110, 97, 109, 101, 3, 99, 111, 109, 0, 0, 1, 0, 1, 3,
             100, 101, 102, 192, 16, 0, 1, 0, 1,
         ];
 
-        let msg = parse_message(data.as_ref()).unwrap();
-        dbg!(msg);
+        let (i, msg) = parse_message(data.as_ref()).unwrap();
+
+        assert_eq!(i.len(), 0);
+        assert_eq!(msg.questions().len(), 2);
+        assert_eq!(
+            msg.questions()[0],
+            Domain::new_aa("abc.longassdomainname.com")
+        );
+        assert_eq!(
+            msg.questions()[1],
+            Domain::new_aa("def.longassdomainname.com")
+        );
+    }
+
+    #[test]
+    fn test_parse_response() {
+        let data = std::fs::read("response_packet.bin").unwrap();
+        assert!(!data.is_empty());
+
+        let (i, msg) = parse_message(&data).expect("message");
+
+        assert!(i.is_empty());
+        assert_eq!(msg.questions().len(), 1);
+        assert_eq!(msg.answers().len(), 4);
     }
 }
